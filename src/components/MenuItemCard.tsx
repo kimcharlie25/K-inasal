@@ -34,11 +34,10 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
     : (hasImplicitDiscount ? effectivePrice : undefined);
 
   const calculatePrice = () => {
-    // Use effective price (discounted or regular) as base
-    let price = effectivePrice;
-    if (selectedVariation) {
-      price = effectivePrice + selectedVariation.price;
-    }
+    // If variation is selected, use variation price as the base (variation prices are total prices)
+    // Otherwise, use effective price (discounted or regular) as base
+    let price = selectedVariation ? selectedVariation.price : effectivePrice;
+    // Add add-ons to the price
     selectedAddOns.forEach(addOn => {
       price += addOn.price * addOn.quantity;
     });
@@ -211,7 +210,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
               ) : quantity === 0 ? (
                 <button
                   onClick={handleAddToCart}
-                  className="bg-gradient-to-r from-red-500 to-red-600 text-white px-6 py-2.5 rounded-xl hover:from-red-600 hover:to-red-700 transition-all duration-200 transform hover:scale-105 font-medium text-sm shadow-lg hover:shadow-xl"
+                  className="bg-black text-white px-6 py-2.5 rounded-lg hover:bg-gray-800 transition-all duration-200 transform hover:scale-105 font-sans font-medium text-sm shadow-lg hover:shadow-xl"
                 >
                   {item.variations?.length || item.addOns?.length ? 'Customize' : 'Add to Cart'}
                 </button>
@@ -332,7 +331,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
                           <span className="font-medium text-gray-900">{variation.name}</span>
                         </div>
                         <span className="text-gray-900 font-semibold">
-                          ₱{((item.effectivePrice || item.basePrice) + variation.price).toFixed(2)}
+                          ₱{variation.price.toFixed(2)}
                         </span>
                       </label>
                     ))}
@@ -393,7 +392,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => updateAddOnQuantity(addOn, 1)}
-                                  className="flex items-center space-x-1 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:from-red-600 hover:to-red-700 transition-all duration-200 text-sm font-medium shadow-lg"
+                                  className="flex items-center space-x-1 px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-all duration-200 text-sm font-sans font-medium shadow-lg"
                                 >
                                   <Plus className="h-3 w-3" />
                                   <span>Add</span>
@@ -418,7 +417,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
 
               <button
                 onClick={handleCustomizedAddToCart}
-                className="w-full bg-gradient-to-r from-red-500 to-red-600 text-white py-4 rounded-xl hover:from-red-600 hover:to-red-700 transition-all duration-200 font-semibold flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl transform hover:scale-105"
+                className="w-full bg-black text-white py-4 rounded-lg hover:bg-gray-800 transition-all duration-200 font-sans font-semibold flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl transform hover:scale-105"
               >
                 <ShoppingCart className="h-5 w-5" />
                 <span>Add to Cart - ₱{calculatePrice().toFixed(2)}</span>

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Clock, Upload, X, Check, Loader2 } from 'lucide-react';
-import { CartItem, PaymentMethod, ServiceType } from '../types';
+import { ArrowLeft, Upload, X, Check, Loader2 } from 'lucide-react';
+import { CartItem, PaymentMethod } from '../types';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
 import { useOrders } from '../hooks/useOrders';
 import { uploadReceiptToCloudinary, compressImage } from '../lib/cloudinary';
+import { useTable } from '../contexts/TableContext';
 
 interface CheckoutProps {
   cartItems: CartItem[];
@@ -14,19 +15,10 @@ interface CheckoutProps {
 const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) => {
   const { paymentMethods } = usePaymentMethods();
   const { createOrder, creating, error } = useOrders();
-  const [step, setStep] = useState<'details' | 'payment'>('details');
+  const { tableNumber } = useTable();
   const [customerName, setCustomerName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
-  const [serviceType, setServiceType] = useState<ServiceType>('dine-in');
-  const [address, setAddress] = useState('');
-  const [landmark, setLandmark] = useState('');
-  const [pickupTime, setPickupTime] = useState('5-10');
-  const [customTime, setCustomTime] = useState('');
-  // Dine-in specific state
-  const [partySize, setPartySize] = useState(1);
-  const [dineInTime, setDineInTime] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('gcash');
-  const [referenceNumber] = useState('');
   const [notes, setNotes] = useState('');
   const [uiNotice, setUiNotice] = useState<string | null>(null);
   // Receipt upload state
@@ -35,15 +27,8 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-
-  const copyOrderDetails = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      return false;
-    }
-  };
+  // Order confirmation modal state
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
 
   const handleReceiptFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -69,10 +54,6 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
     setUploadError(null);
   };
 
-  React.useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [step]);
-
   // Set default payment method when payment methods are loaded
   React.useEffect(() => {
     if (paymentMethods.length > 0 && !paymentMethod) {
@@ -82,11 +63,7 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
 
   const selectedPaymentMethod = paymentMethods.find(method => method.id === paymentMethod);
 
-  const handleProceedToPayment = () => {
-    setStep('payment');
-  };
-
-  const handlePlaceOrder = async () => {
+  const handleConfirmOrder = async () => {
     let uploadedReceiptUrl = receiptUrl;
 
     // Upload receipt first if user selected one but hasn't uploaded yet
@@ -115,25 +92,21 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
     }
 
     // Persist order to database
-    let orderId: string;
     try {
-      const mergedNotes = landmark ? `${notes ? notes + ' | ' : ''}Landmark: ${landmark}` : notes;
       const order = await createOrder({
         customerName,
         contactNumber,
-        serviceType,
-        address: serviceType === 'delivery' ? address : undefined,
-        pickupTime: serviceType === 'pickup' ? (pickupTime === 'custom' ? customTime : `${pickupTime} minutes`) : undefined,
-        partySize: serviceType === 'dine-in' ? partySize : undefined,
-        dineInTime: serviceType === 'dine-in' ? dineInTime : undefined,
+        serviceType: 'dine-in', // Set to dine-in as requested
         paymentMethod,
-        referenceNumber,
-        notes: mergedNotes,
+        notes: notes || undefined,
         total: totalPrice,
         items: cartItems,
         receiptUrl: uploadedReceiptUrl ?? undefined,
+        tableNumber: tableNumber ?? undefined,
       });
-      orderId = order.id;
+      
+      // Show confirmation modal
+      setShowConfirmationModal(true);
     } catch (e) {
       const raw = e instanceof Error ? e.message : '';
       if (/insufficient stock/i.test(raw)) {
@@ -145,560 +118,281 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
       } else if (/missing identifiers/i.test(raw)) {
         setUiNotice('Too many orders: Please wait 1 minute before placing another order.');
       } else {
-        setUiNotice('Too many orders: Please wait 1 minute before placing another order.');
+        setUiNotice('Failed to create order. Please try again.');
       }
       return;
     }
-    const timeInfo = serviceType === 'pickup' 
-      ? (pickupTime === 'custom' ? customTime : `${pickupTime} minutes`)
-      : '';
-    
-    const dineInInfo = serviceType === 'dine-in' 
-      ? `👥 Party Size: ${partySize} person${partySize !== 1 ? 's' : ''}\n🕐 Preferred Time: ${new Date(dineInTime).toLocaleString('en-US', { 
-          weekday: 'long', 
-          year: 'numeric', 
-          month: 'long', 
-          day: 'numeric', 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        })}`
-      : '';
-    
-    const orderDetails = `
-🛒 ClickEats ORDER
-📋 Order Code: #${orderId.slice(-8).toUpperCase()}
-
-👤 Customer: ${customerName}
-📞 Contact: ${contactNumber}
-📍 Service: ${serviceType.charAt(0).toUpperCase() + serviceType.slice(1)}
-${serviceType === 'delivery' ? `🏠 Address: ${address}${landmark ? `\n🗺️ Landmark: ${landmark}` : ''}` : ''}
-${serviceType === 'pickup' ? `⏰ Pickup Time: ${timeInfo}` : ''}
-${serviceType === 'dine-in' ? dineInInfo : ''}
-
-
-📋 ORDER DETAILS:
-${cartItems.map(item => {
-  let itemDetails = `• ${item.name}`;
-  if (item.selectedVariation) {
-    itemDetails += ` (${item.selectedVariation.name})`;
-  }
-  if (item.selectedAddOns && item.selectedAddOns.length > 0) {
-    itemDetails += ` + ${item.selectedAddOns.map(addOn => 
-      addOn.quantity && addOn.quantity > 1 
-        ? `${addOn.name} x${addOn.quantity}`
-        : addOn.name
-    ).join(', ')}`;
-  }
-  itemDetails += ` x${item.quantity} - ₱${item.totalPrice * item.quantity}`;
-  return itemDetails;
-}).join('\n')}
-
-💰 TOTAL: ₱${totalPrice}
-${serviceType === 'delivery' ? `🛵 DELIVERY FEE:` : ''}
-
-💳 Payment: ${selectedPaymentMethod?.name || paymentMethod}
-${uploadedReceiptUrl ? `📸 Payment Receipt: ${uploadedReceiptUrl}` : '📸 Payment Screenshot: Please attach your payment receipt screenshot'}
-
-${notes ? `📝 Notes: ${notes}` : ''}
-
-Please confirm this order to proceed. Thank you for choosing ClickEats! 🥟
-
-📋 Order Code: #${orderId.slice(-8).toUpperCase()}
-    `.trim();
-
-    const pageId = '61579693577478';
-    const encodedMessage = encodeURIComponent(orderDetails);
-    const webLink = `https://m.me/${pageId}?text=${encodedMessage}`;
-
-    // Best effort: copy order details so user can paste in Messenger if text cannot be prefilled
-    await copyOrderDetails(orderDetails);
-
-    // Use window.location for both mobile and desktop to avoid popup blocker
-    // This will navigate away from the site but ensures the link always works
-    window.location.href = webLink;
-    
   };
 
-  const isDetailsValid = customerName && contactNumber && 
-    (serviceType !== 'delivery' || address) && 
-    (serviceType !== 'pickup' || (pickupTime !== 'custom' || customTime)) &&
-    (serviceType !== 'dine-in' || (partySize > 0 && dineInTime));
+  const handleModalOkay = () => {
+    // Refresh and redirect to landing page
+    window.location.href = '/';
+  };
 
-  if (step === 'details') {
-    return (
+  const isDetailsValid = customerName && contactNumber;
+
+  return (
+    <>
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center mb-8">
           <button
             onClick={onBack}
-            className="flex items-center space-x-2 text-gray-600 hover:text-black transition-colors duration-200"
+            className="flex items-center space-x-2 text-gray-600 hover:text-black transition-colors duration-200 font-sans"
           >
             <ArrowLeft className="h-5 w-5" />
             <span>Back to Cart</span>
           </button>
-          <h1 className="text-3xl font-noto font-semibold text-black ml-8">Order Details</h1>
+          <h1 className="text-3xl font-sans font-bold text-[#FF0000] ml-8">Checkout</h1>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Order Summary */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-2xl font-noto font-medium text-black mb-6">Order Summary</h2>
-            
-            <div className="space-y-4 mb-6">
-              {cartItems.map((item) => (
-                <div key={item.id} className="flex items-center justify-between py-2 border-b border-red-100">
-                  <div>
-                    <h4 className="font-medium text-black">{item.name}</h4>
-                    {item.selectedVariation && (
-                      <p className="text-sm text-gray-600">Size: {item.selectedVariation.name}</p>
-                    )}
-                    {item.selectedAddOns && item.selectedAddOns.length > 0 && (
-                      <p className="text-sm text-gray-600">
-                        Add-ons: {item.selectedAddOns.map(addOn => addOn.name).join(', ')}
-                      </p>
-                    )}
-                    <p className="text-sm text-gray-600">₱{item.totalPrice} x {item.quantity}</p>
-                  </div>
-                  <span className="font-semibold text-black">₱{item.totalPrice * item.quantity}</span>
-                </div>
-              ))}
-            </div>
-            
-            <div className="border-t border-red-200 pt-4">
-              <div className="flex items-center justify-between text-2xl font-noto font-semibold text-black">
-                <span>Total:</span>
-                <span>₱{totalPrice}</span>
-              </div>
-            </div>
+        {uiNotice && (
+          <div className="mb-4 rounded-lg border border-yellow-300 bg-yellow-50 text-yellow-800 p-4 text-sm font-sans">
+            {uiNotice}
           </div>
+        )}
 
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Customer Details Form */}
           <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-2xl font-noto font-medium text-black mb-6">Customer Information</h2>
+            <h2 className="text-2xl font-sans font-bold text-[#FF0000] mb-6">Customer Information</h2>
             
             <form className="space-y-6">
               {/* Customer Information */}
               <div>
-                <label className="block text-sm font-medium text-black mb-2">Full Name *</label>
+                <label className="block text-sm font-medium text-black mb-2 font-sans">Full Name *</label>
                 <input
                   type="text"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  className="w-full px-4 py-3 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent transition-all duration-200 font-sans"
                   placeholder="Enter your full name"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-black mb-2">Contact Number *</label>
+                <label className="block text-sm font-medium text-black mb-2 font-sans">Contact Number *</label>
                 <input
                   type="tel"
                   value={contactNumber}
                   onChange={(e) => setContactNumber(e.target.value)}
-                  className="w-full px-4 py-3 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent transition-all duration-200 font-sans"
                   placeholder="09XX XXX XXXX"
                   required
                 />
               </div>
 
-              {/* Service Type */}
-              <div>
-                <label className="block text-sm font-medium text-black mb-3">Service Type *</label>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { value: 'dine-in', label: 'Dine In', icon: '🪑' },
-                    { value: 'pickup', label: 'Pickup', icon: '🚶' },
-                    { value: 'delivery', label: 'Delivery', icon: '🛵' }
-                  ].map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setServiceType(option.value as ServiceType)}
-                      className={`p-4 rounded-lg border-2 transition-all duration-200 ${
-                        serviceType === option.value
-                          ? 'border-red-600 bg-red-600 text-white'
-                          : 'border-red-300 bg-white text-gray-700 hover:border-red-400'
-                      }`}
-                    >
-                      <div className="text-2xl mb-1">{option.icon}</div>
-                      <div className="text-sm font-medium">{option.label}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Dine-in Details */}
-              {serviceType === 'dine-in' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-black mb-2">Party Size *</label>
-                    <div className="flex items-center space-x-4">
-                      <button
-                        type="button"
-                        onClick={() => setPartySize(Math.max(1, partySize - 1))}
-                        className="w-10 h-10 rounded-lg border-2 border-red-300 flex items-center justify-center text-red-600 hover:border-red-400 hover:bg-red-50 transition-all duration-200"
-                      >
-                        -
-                      </button>
-                      <span className="text-2xl font-semibold text-black min-w-[3rem] text-center">{partySize}</span>
-                      <button
-                        type="button"
-                        onClick={() => setPartySize(Math.min(20, partySize + 1))}
-                        className="w-10 h-10 rounded-lg border-2 border-red-300 flex items-center justify-center text-red-600 hover:border-red-400 hover:bg-red-50 transition-all duration-200"
-                      >
-                        +
-                      </button>
-                      <span className="text-sm text-gray-600 ml-2">person{partySize !== 1 ? 's' : ''}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-black mb-2">Preferred Time *</label>
-                    <input
-                      type="datetime-local"
-                      value={dineInTime}
-                      onChange={(e) => setDineInTime(e.target.value)}
-                      className="w-full px-4 py-3 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200"
-                      required
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Please select your preferred dining time</p>
-                  </div>
-                </>
-              )}
-
-              {/* Pickup Time Selection */}
-              {serviceType === 'pickup' && (
-                <div>
-                  <label className="block text-sm font-medium text-black mb-3">Pickup Time *</label>
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      {[
-                        { value: '5-10', label: '5-10 minutes' },
-                        { value: '15-20', label: '15-20 minutes' },
-                        { value: '25-30', label: '25-30 minutes' },
-                        { value: 'custom', label: 'Custom Time' }
-                      ].map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setPickupTime(option.value)}
-                          className={`p-3 rounded-lg border-2 transition-all duration-200 text-sm ${
-                            pickupTime === option.value
-                              ? 'border-red-600 bg-red-600 text-white'
-                              : 'border-red-300 bg-white text-gray-700 hover:border-red-400'
-                          }`}
-                        >
-                          <Clock className="h-4 w-4 mx-auto mb-1" />
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                    
-                    {pickupTime === 'custom' && (
-                      <input
-                        type="text"
-                        value={customTime}
-                        onChange={(e) => setCustomTime(e.target.value)}
-                        className="w-full px-4 py-3 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200"
-                        placeholder="e.g., 45 minutes, 1 hour, 2:30 PM"
-                        required
-                      />
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Delivery Address */}
-              {serviceType === 'delivery' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-black mb-2">Delivery Address *</label>
-                    <textarea
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      className="w-full px-4 py-3 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200"
-                      placeholder="Enter your complete delivery address"
-                      rows={3}
-                      required
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-black mb-2">Landmark</label>
-                    <input
-                      type="text"
-                      value={landmark}
-                      onChange={(e) => setLandmark(e.target.value)}
-                      className="w-full px-4 py-3 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200"
-                      placeholder="e.g., Near McDonald's, Beside 7-Eleven, In front of school"
-                    />
-                  </div>
-                </>
-              )}
-
               {/* Special Notes */}
               <div>
-                <label className="block text-sm font-medium text-black mb-2">Special Instructions</label>
+                <label className="block text-sm font-medium text-black mb-2 font-sans">Special Instructions</label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-4 py-3 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent transition-all duration-200 font-sans"
                   placeholder="Any special requests or notes..."
                   rows={3}
                 />
               </div>
 
-              <button
-                onClick={handleProceedToPayment}
-                disabled={!isDetailsValid}
-                className={`w-full py-4 rounded-xl font-medium text-lg transition-all duration-200 transform ${
-                  isDetailsValid
-                    ? 'bg-red-600 text-white hover:bg-red-700 hover:scale-[1.02]'
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
-              >
-                Proceed to Payment
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Payment Step
-  return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="flex items-center mb-8">
-        <button
-          onClick={() => setStep('details')}
-          className="flex items-center space-x-2 text-gray-600 hover:text-black transition-colors duration-200"
-        >
-          <ArrowLeft className="h-5 w-5" />
-          <span>Back to Details</span>
-        </button>
-        <h1 className="text-3xl font-noto font-semibold text-black ml-8">Payment</h1>
-      </div>
-
-      {uiNotice && (
-        <div className="mb-4 rounded-lg border border-yellow-300 bg-yellow-50 text-yellow-800 p-4 text-sm">
-          {uiNotice}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Payment Method Selection */}
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <h2 className="text-2xl font-noto font-medium text-black mb-6">Choose Payment Method</h2>
-          
-          <div className="grid grid-cols-1 gap-4 mb-6">
-            {paymentMethods.map((method) => (
-              <button
-                key={method.id}
-                type="button"
-                onClick={() => setPaymentMethod(method.id as PaymentMethod)}
-                className={`p-4 rounded-lg border-2 transition-all duration-200 flex items-center space-x-3 ${
-                  paymentMethod === method.id
-                    ? 'border-red-600 bg-red-600 text-white'
-                    : 'border-red-300 bg-white text-gray-700 hover:border-red-400'
-                }`}
-              >
-                <span className="text-2xl">💳</span>
-                <span className="font-medium">{method.name}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Payment Details with QR Code */}
-          {selectedPaymentMethod && (
-            <div className="bg-red-50 rounded-lg p-6 mb-6">
-              <h3 className="font-medium text-black mb-4">Payment Details</h3>
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div className="flex-1">
-                  <p className="text-sm text-gray-600 mb-1">{selectedPaymentMethod.name}</p>
-                  <p className="font-mono text-black font-medium">{selectedPaymentMethod.account_number}</p>
-                  <p className="text-sm text-gray-600 mb-3">Account Name: {selectedPaymentMethod.account_name}</p>
-                  <p className="text-xl font-semibold text-black">Amount: ₱{totalPrice}</p>
-                </div>
-                <div className="flex-shrink-0">
-                  <img 
-                    src={selectedPaymentMethod.qr_code_url} 
-                    alt={`${selectedPaymentMethod.name} QR Code`}
-                    className="w-32 h-32 rounded-lg border-2 border-red-300 shadow-sm"
-                    onError={(e) => {
-                      e.currentTarget.src = 'https://images.pexels.com/photos/8867482/pexels-photo-8867482.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop';
-                    }}
-                  />
-                  <p className="text-xs text-gray-500 text-center mt-2">Scan to pay</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Receipt Upload */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h4 className="font-medium text-black mb-3">📸 Upload Payment Receipt</h4>
-            
-            {!receiptPreview ? (
+              {/* Payment Method Selection */}
               <div>
-                <label
-                  htmlFor="receipt-upload"
-                  className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-blue-300 rounded-lg cursor-pointer bg-white hover:bg-blue-50 transition-colors"
-                >
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <Upload className="h-8 w-8 text-blue-500 mb-2" />
-                    <p className="text-sm text-gray-600">
-                      <span className="font-semibold">Click to select receipt</span> or drag and drop
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">PNG, JPG, WEBP up to 10MB (Optional)</p>
-                  </div>
-                  <input
-                    id="receipt-upload"
-                    type="file"
-                    className="hidden"
-                    accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif"
-                    onChange={handleReceiptFileChange}
-                  />
-                </label>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="relative rounded-lg overflow-hidden border-2 border-blue-300">
-                  <img
-                    src={receiptPreview}
-                    alt="Receipt preview"
-                    className="w-full h-48 object-cover"
-                  />
-                  <button
-                    onClick={handleRemoveReceipt}
-                    className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                <label className="block text-sm font-medium text-black mb-3 font-sans">Payment Method *</label>
+                <div className="grid grid-cols-1 gap-3">
+                  {paymentMethods.map((method) => (
+                    <button
+                      key={method.id}
+                      type="button"
+                      onClick={() => setPaymentMethod(method.id as PaymentMethod)}
+                      className={`p-4 rounded-lg border-2 transition-all duration-200 flex items-center space-x-3 font-sans ${
+                        paymentMethod === method.id
+                          ? 'border-black bg-black text-white'
+                          : 'border-gray-300 bg-white text-gray-700 hover:border-black'
+                      }`}
+                    >
+                      <span className="text-2xl">💳</span>
+                      <span className="font-medium">{method.name}</span>
+                    </button>
+                  ))}
                 </div>
+              </div>
 
-                {receiptUrl ? (
-                  <div className="flex items-center space-x-2 text-green-600 bg-green-50 px-3 py-2 rounded-lg">
-                    <Check className="h-5 w-5" />
-                    <span className="text-sm font-medium">Receipt ready! Will be saved with your order.</span>
+              {/* Payment Details with QR Code */}
+              {selectedPaymentMethod && (
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <h3 className="font-medium text-black mb-3 font-sans">Payment Details</h3>
+                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div className="flex-1">
+                      <p className="text-sm text-gray-600 mb-1">{selectedPaymentMethod.name}</p>
+                      <p className="font-mono text-black font-medium">{selectedPaymentMethod.account_number}</p>
+                      <p className="text-sm text-gray-600 mb-2">Account Name: {selectedPaymentMethod.account_name}</p>
+                      <p className="text-lg font-semibold text-black">Amount: ₱{totalPrice}</p>
+                    </div>
+                    <div className="flex-shrink-0">
+                      <img 
+                        src={selectedPaymentMethod.qr_code_url} 
+                        alt={`${selectedPaymentMethod.name} QR Code`}
+                        className="w-32 h-32 rounded-lg border-2 border-gray-300 shadow-sm"
+                        onError={(e) => {
+                          e.currentTarget.src = 'https://images.pexels.com/photos/8867482/pexels-photo-8867482.jpeg?auto=compress&cs=tinysrgb&w=300&h=300&fit=crop';
+                        }}
+                      />
+                      <p className="text-xs text-gray-500 text-center mt-2">Scan to pay</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Receipt Upload */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <h4 className="font-medium text-black mb-3 font-sans">📸 Upload Payment Receipt (Optional)</h4>
+                
+                {!receiptPreview ? (
+                  <div>
+                    <label
+                      htmlFor="receipt-upload"
+                      className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-white hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                        <Upload className="h-8 w-8 text-gray-500 mb-2" />
+                        <p className="text-sm text-gray-600 font-sans">
+                          <span className="font-semibold">Click to select receipt</span> or drag and drop
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1 font-sans">PNG, JPG, WEBP up to 10MB</p>
+                      </div>
+                      <input
+                        id="receipt-upload"
+                        type="file"
+                        className="hidden"
+                        accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif"
+                        onChange={handleReceiptFileChange}
+                      />
+                    </label>
                   </div>
                 ) : (
-                  <div className="flex items-center space-x-2 text-blue-600 bg-blue-50 px-3 py-2 rounded-lg">
-                    <Upload className="h-5 w-5" />
-                    <span className="text-sm font-medium">Receipt selected. Will upload when you place order.</span>
-                  </div>
-                )}
+                  <div className="space-y-3">
+                    <div className="relative rounded-lg overflow-hidden border-2 border-gray-300">
+                      <img
+                        src={receiptPreview}
+                        alt="Receipt preview"
+                        className="w-full h-48 object-cover"
+                      />
+                      <button
+                        onClick={handleRemoveReceipt}
+                        className="absolute top-2 right-2 p-1 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
 
-                {uploadError && (
-                  <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
-                    {uploadError}
+                    {receiptUrl ? (
+                      <div className="flex items-center space-x-2 text-green-600 bg-green-50 px-3 py-2 rounded-lg font-sans">
+                        <Check className="h-5 w-5" />
+                        <span className="text-sm font-medium">Receipt ready!</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-2 text-gray-600 bg-gray-100 px-3 py-2 rounded-lg font-sans">
+                        <Upload className="h-5 w-5" />
+                        <span className="text-sm font-medium">Receipt selected. Will upload when you confirm order.</span>
+                      </div>
+                    )}
+
+                    {uploadError && (
+                      <div className="text-sm text-[#FF0000] bg-red-50 px-3 py-2 rounded-lg font-sans">
+                        {uploadError}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
+            </form>
+          </div>
+
+          {/* Order Summary */}
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h2 className="text-2xl font-sans font-bold text-[#FF0000] mb-6">Order Summary</h2>
             
-            <p className="text-xs text-gray-600 mt-3">
-              {receiptFile ? 'Receipt will be uploaded automatically when you place your order.' : 'You can also attach your receipt in the Messenger conversation.'}
-            </p>
-          </div>
-        </div>
-
-        {/* Order Summary */}
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <h2 className="text-2xl font-noto font-medium text-black mb-6">Final Order Summary</h2>
-          
-          <div className="space-y-4 mb-6">
-            <div className="bg-red-50 rounded-lg p-4">
-              <h4 className="font-medium text-black mb-2">Customer Details</h4>
-              <p className="text-sm text-gray-600">Name: {customerName}</p>
-              <p className="text-sm text-gray-600">Contact: {contactNumber}</p>
-              <p className="text-sm text-gray-600">Service: {serviceType.charAt(0).toUpperCase() + serviceType.slice(1)}</p>
-              {serviceType === 'delivery' && (
-                <>
-                  <p className="text-sm text-gray-600">Address: {address}</p>
-                  {landmark && <p className="text-sm text-gray-600">Landmark: {landmark}</p>}
-                </>
-              )}
-              {serviceType === 'pickup' && (
-                <p className="text-sm text-gray-600">
-                  Pickup Time: {pickupTime === 'custom' ? customTime : `${pickupTime} minutes`}
-                </p>
-              )}
-              {serviceType === 'dine-in' && (
-                <>
-                  <p className="text-sm text-gray-600">
-                    Party Size: {partySize} person{partySize !== 1 ? 's' : ''}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    Preferred Time: {dineInTime ? new Date(dineInTime).toLocaleString('en-US', { 
-                      weekday: 'long', 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric', 
-                      hour: '2-digit', 
-                      minute: '2-digit' 
-                    }) : 'Not selected'}
-                  </p>
-                </>
-              )}
-            </div>
-
-            {cartItems.map((item) => (
-              <div key={item.id} className="flex items-center justify-between py-2 border-b border-red-100">
-                <div>
-                  <h4 className="font-medium text-black">{item.name}</h4>
-                  {item.selectedVariation && (
-                    <p className="text-sm text-gray-600">Size: {item.selectedVariation.name}</p>
-                  )}
-                  {item.selectedAddOns && item.selectedAddOns.length > 0 && (
-                    <p className="text-sm text-gray-600">
-                      Add-ons: {item.selectedAddOns.map(addOn => 
-                        addOn.quantity && addOn.quantity > 1 
-                          ? `${addOn.name} x${addOn.quantity}`
-                          : addOn.name
-                      ).join(', ')}
-                    </p>
-                  )}
-                  <p className="text-sm text-gray-600">₱{item.totalPrice} x {item.quantity}</p>
+            <div className="space-y-4 mb-6">
+              {cartItems.map((item) => (
+                <div key={item.id} className="flex items-center justify-between py-2 border-b border-gray-200">
+                  <div>
+                    <h4 className="font-medium text-black font-sans">{item.name}</h4>
+                    {item.selectedVariation && (
+                      <p className="text-sm text-gray-600 font-sans">Size: {item.selectedVariation.name}</p>
+                    )}
+                    {item.selectedAddOns && item.selectedAddOns.length > 0 && (
+                      <p className="text-sm text-gray-600 font-sans">
+                        Add-ons: {item.selectedAddOns.map(addOn => 
+                          addOn.quantity && addOn.quantity > 1 
+                            ? `${addOn.name} x${addOn.quantity}`
+                            : addOn.name
+                        ).join(', ')}
+                      </p>
+                    )}
+                    <p className="text-sm text-gray-600 font-sans">₱{item.totalPrice} x {item.quantity}</p>
+                  </div>
+                  <span className="font-semibold text-black font-sans">₱{item.totalPrice * item.quantity}</span>
                 </div>
-                <span className="font-semibold text-black">₱{item.totalPrice * item.quantity}</span>
-              </div>
-            ))}
-          </div>
-          
-          <div className="border-t border-red-200 pt-4 mb-6">
-            <div className="flex items-center justify-between text-2xl font-noto font-semibold text-black">
-              <span>Total:</span>
-              <span>₱{totalPrice}</span>
+              ))}
             </div>
-          </div>
+            
+            <div className="border-t border-gray-200 pt-4 mb-6">
+              <div className="flex items-center justify-between text-2xl font-sans font-bold text-[#FF0000]">
+                <span>Total:</span>
+                <span>₱{totalPrice}</span>
+              </div>
+            </div>
 
-          <button
-            onClick={handlePlaceOrder}
-            disabled={creating || uploadingReceipt}
-            className={`w-full py-4 rounded-xl font-medium text-lg transition-all duration-200 transform ${creating || uploadingReceipt ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-700 hover:scale-[1.02]'}`}
-          >
-            {uploadingReceipt ? (
-              <span className="flex items-center justify-center space-x-2">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <span>Uploading Receipt...</span>
-              </span>
-            ) : creating ? (
-              'Placing Order...'
-            ) : (
-              'Place Order via Messenger'
+            <button
+              onClick={handleConfirmOrder}
+              disabled={!isDetailsValid || creating || uploadingReceipt}
+              className={`w-full py-4 rounded-lg font-sans font-medium text-lg transition-all duration-200 transform ${
+                !isDetailsValid || creating || uploadingReceipt
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-black text-white hover:bg-gray-800 hover:scale-[1.02]'
+              }`}
+            >
+              {uploadingReceipt ? (
+                <span className="flex items-center justify-center space-x-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span>Uploading Receipt...</span>
+                </span>
+              ) : creating ? (
+                <span className="flex items-center justify-center space-x-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span>Confirming Order...</span>
+                </span>
+              ) : (
+                'Confirm Order'
+              )}
+            </button>
+            {error && !uiNotice && (
+              <p className="text-sm text-[#FF0000] text-center mt-2 font-sans">{error}</p>
             )}
-          </button>
-          {error && !uiNotice && (
-            <p className="text-sm text-red-600 text-center mt-2">{error}</p>
-          )}
-          
-          <p className="text-xs text-gray-500 text-center mt-3">
-            You'll be redirected to Facebook Messenger to confirm your order. Don't forget to attach your payment screenshot!
-          </p>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Order Confirmation Modal */}
+      {showConfirmationModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl">
+            <div className="p-8 text-center">
+              <div className="text-6xl mb-4">✅</div>
+              <h3 className="text-2xl font-sans font-bold text-[#FF0000] mb-4">Order Confirmed!</h3>
+              <p className="text-gray-600 mb-6 font-sans">
+                Your order has been successfully placed and will be processed shortly.
+              </p>
+              <button
+                onClick={handleModalOkay}
+                className="w-full bg-black text-white py-3 rounded-lg hover:bg-gray-800 transition-all duration-200 font-sans font-medium"
+              >
+                Okay
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

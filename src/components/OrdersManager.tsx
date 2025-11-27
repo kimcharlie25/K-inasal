@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle, Clock, XCircle, RefreshCw, ChevronDown, Search, Image as ImageIcon, Download, Calendar, DollarSign } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Clock, XCircle, RefreshCw, ChevronDown, Search, Image as ImageIcon, Download, Calendar, DollarSign, Printer } from 'lucide-react';
 import { useOrders, OrderWithItems } from '../hooks/useOrders';
 
 interface OrdersManagerProps {
@@ -216,6 +216,261 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
     setDateTo('');
   };
 
+  const printReceipt = (order: OrderWithItems) => {
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Please allow popups to print receipts');
+      return;
+    }
+
+    // Get table number from order data (stored when order was created from URL param)
+    const tableNumber = order.table_number;
+
+    // Format order date
+    const orderDate = new Date(order.created_at);
+    const formattedDate = orderDate.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    // Build receipt HTML optimized for thermal printers (80mm width)
+    const receiptHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Receipt - Order #${order.id.slice(-8).toUpperCase()}</title>
+  <style>
+    @media print {
+      @page {
+        size: 80mm auto;
+        margin: 0;
+      }
+      body {
+        margin: 0;
+        padding: 10mm;
+      }
+    }
+    body {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      width: 80mm;
+      margin: 0 auto;
+      padding: 10px;
+      line-height: 1.4;
+    }
+    .header {
+      text-align: center;
+      border-bottom: 1px dashed #000;
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+    }
+    .header h1 {
+      font-size: 18px;
+      font-weight: bold;
+      margin: 5px 0;
+      text-transform: uppercase;
+    }
+    .header p {
+      font-size: 10px;
+      margin: 2px 0;
+    }
+    .section {
+      margin: 10px 0;
+    }
+    .section-title {
+      font-weight: bold;
+      text-transform: uppercase;
+      border-bottom: 1px solid #000;
+      padding-bottom: 3px;
+      margin-bottom: 5px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      margin: 3px 0;
+    }
+    .row-label {
+      font-weight: bold;
+    }
+    .items {
+      margin: 10px 0;
+    }
+    .item {
+      margin: 8px 0;
+      padding-bottom: 5px;
+      border-bottom: 1px dotted #ccc;
+    }
+    .item-name {
+      font-weight: bold;
+      margin-bottom: 2px;
+    }
+    .item-details {
+      font-size: 10px;
+      color: #666;
+      margin-left: 5px;
+    }
+    .item-price {
+      text-align: right;
+      margin-top: 2px;
+    }
+    .divider {
+      border-top: 1px dashed #000;
+      margin: 10px 0;
+    }
+    .total {
+      font-weight: bold;
+      font-size: 14px;
+      text-align: right;
+      margin-top: 10px;
+    }
+    .footer {
+      text-align: center;
+      margin-top: 20px;
+      padding-top: 10px;
+      border-top: 1px dashed #000;
+      font-size: 10px;
+    }
+    .order-id {
+      font-weight: bold;
+      font-size: 14px;
+      text-align: center;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>K Inasal</h1>
+    <p>Order Receipt</p>
+  </div>
+
+  <div class="order-id">
+    Order #${order.id.slice(-8).toUpperCase()}
+  </div>
+
+  <div class="section">
+    <div class="section-title">Customer Information</div>
+    <div class="row">
+      <span class="row-label">Name:</span>
+      <span>${order.customer_name}</span>
+    </div>
+    <div class="row">
+      <span class="row-label">Contact:</span>
+      <span>${order.contact_number}</span>
+    </div>
+    <div class="row">
+      <span class="row-label">Service:</span>
+      <span>Dine-in</span>
+    </div>
+    ${tableNumber ? `
+    <div class="row">
+      <span class="row-label">Table:</span>
+      <span>#${tableNumber}</span>
+    </div>
+    ` : ''}
+    ${order.address ? `
+    <div class="row">
+      <span class="row-label">Address:</span>
+      <span>${order.address}</span>
+    </div>
+    ` : ''}
+    ${order.pickup_time ? `
+    <div class="row">
+      <span class="row-label">Pickup Time:</span>
+      <span>${order.pickup_time}</span>
+    </div>
+    ` : ''}
+    ${order.party_size ? `
+    <div class="row">
+      <span class="row-label">Party Size:</span>
+      <span>${order.party_size} person${order.party_size !== 1 ? 's' : ''}</span>
+    </div>
+    ` : ''}
+    ${order.dine_in_time ? `
+    <div class="row">
+      <span class="row-label">Dine-in Time:</span>
+      <span>${formatDateTime(order.dine_in_time)}</span>
+    </div>
+    ` : ''}
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="section">
+    <div class="section-title">Order Items</div>
+    <div class="items">
+      ${order.order_items.map(item => `
+        <div class="item">
+          <div class="item-name">${item.name} x${item.quantity}</div>
+          ${item.variation ? `<div class="item-details">Size: ${item.variation.name}</div>` : ''}
+          ${item.add_ons && item.add_ons.length > 0 ? `
+            <div class="item-details">
+              Add-ons: ${item.add_ons.map((addon: any) => 
+                addon.quantity > 1 ? `${addon.name} x${addon.quantity}` : addon.name
+              ).join(', ')}
+            </div>
+          ` : ''}
+          <div class="item-price">
+            ₱${item.unit_price.toFixed(2)} x ${item.quantity} = ₱${item.subtotal.toFixed(2)}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="section">
+    <div class="row">
+      <span class="row-label">Payment Method:</span>
+      <span>${order.payment_method}</span>
+    </div>
+    ${order.reference_number ? `
+    <div class="row">
+      <span class="row-label">Reference #:</span>
+      <span>${order.reference_number}</span>
+    </div>
+    ` : ''}
+    ${order.notes ? `
+    <div class="row">
+      <span class="row-label">Notes:</span>
+      <span>${order.notes}</span>
+    </div>
+    ` : ''}
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="total">
+    TOTAL: ₱${order.total.toFixed(2)}
+  </div>
+
+  <div class="footer">
+    <div>Date: ${formattedDate}</div>
+    <div>Status: ${order.status.toUpperCase()}</div>
+    <div style="margin-top: 10px;">Thank you for your order!</div>
+  </div>
+</body>
+</html>
+    `;
+
+    printWindow.document.write(receiptHTML);
+    printWindow.document.close();
+
+    // Wait for content to load, then print
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+      // Close window after printing (optional)
+      // printWindow.close();
+    }, 250);
+  };
+
   // Calculate total sales from completed orders
   const totalSales = useMemo(() => {
     return filtered
@@ -228,7 +483,17 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
     return filtered.filter(order => order.status.toLowerCase() === 'completed').length;
   }, [filtered]);
 
-  if (loading) {
+  // Show a subtle indicator when orders are being auto-refreshed
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  
+  React.useEffect(() => {
+    // Monitor when orders change to show refresh indicator
+    setIsRefreshing(true);
+    const timer = setTimeout(() => setIsRefreshing(false), 1000);
+    return () => clearTimeout(timer);
+  }, [orders.length]);
+
+  if (loading && orders.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -271,9 +536,21 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
                 <span>Back to Dashboard</span>
               </button>
               <h1 className="text-2xl font-playfair font-semibold text-black">Orders Management</h1>
+              {isRefreshing && (
+                <div className="flex items-center space-x-2 text-green-600 text-sm">
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Auto-refreshing...</span>
+                </div>
+              )}
             </div>
-            <div className="text-sm text-gray-500">
-              {orders.length} order{orders.length !== 1 ? 's' : ''} total
+            <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-2 text-sm">
+                <div className={`h-2 w-2 rounded-full ${isRefreshing ? 'bg-green-500 animate-pulse' : 'bg-green-500'}`}></div>
+                <span className="text-gray-500">Live updates active</span>
+              </div>
+              <div className="text-sm text-gray-500">
+                {orders.length} order{orders.length !== 1 ? 's' : ''} total
+              </div>
             </div>
           </div>
         </div>
@@ -449,6 +726,7 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
                       <th className="px-5 py-3 text-left font-medium">Order</th>
                       <th className="px-5 py-3 text-left font-medium">Customer</th>
                       <th className="px-5 py-3 text-left font-medium">Service</th>
+                      <th className="px-5 py-3 text-left font-medium">Table</th>
                       <th className="px-5 py-3 text-left font-medium">Total</th>
                       <th className="px-5 py-3 text-left font-medium">Status</th>
                       <th className="px-5 py-3 text-left font-medium">Placed</th>
@@ -467,6 +745,15 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
                           <div className="text-xs text-gray-500">{order.contact_number}</div>
                         </td>
                         <td className="px-5 py-4 text-gray-700">{formatServiceType(order.service_type)}</td>
+                        <td className="px-5 py-4">
+                          {order.table_number ? (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-black text-white">
+                              #{order.table_number}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">—</span>
+                          )}
+                        </td>
                         <td className="px-5 py-4 font-semibold text-gray-900">₱{order.total.toFixed(2)}</td>
                         <td className="px-5 py-4">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
@@ -482,6 +769,14 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
                               className="px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-700"
                             >
                               View
+                            </button>
+                            <button
+                              onClick={() => printReceipt(order)}
+                              className="px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-700 flex items-center gap-1"
+                              title="Print Receipt"
+                            >
+                              <Printer className="h-4 w-4" />
+                              <span className="hidden lg:inline">Print</span>
                             </button>
                             <select
                               value={order.status}
@@ -524,8 +819,16 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
                       <div className="font-medium">{order.customer_name}</div>
                       <div className="text-gray-500">{order.contact_number}</div>
                     </div>
-                    <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center justify-between text-sm mb-2">
                       <div className="text-gray-600">{formatServiceType(order.service_type)}</div>
+                      {order.table_number && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-black text-white">
+                          Table #{order.table_number}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="text-gray-600">Total</div>
                       <div className="font-semibold text-gray-900">₱{order.total.toFixed(2)}</div>
                     </div>
                     <div className="text-xs text-gray-500 mt-1">{formatDateTime(order.created_at)}</div>
@@ -535,6 +838,13 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
                         className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-100"
                       >
                         Details
+                      </button>
+                      <button
+                        onClick={() => printReceipt(order)}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-100 flex items-center justify-center gap-1"
+                        title="Print Receipt"
+                      >
+                        <Printer className="h-4 w-4" />
                       </button>
                       <select
                         value={order.status}
@@ -569,12 +879,22 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
                 </h3>
                 <p className="text-sm text-gray-500 mt-1">Complete order details</p>
               </div>
-              <button
-                onClick={() => setSelectedOrder(null)}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors duration-200"
-              >
-                <XCircle className="h-5 w-5 text-gray-500" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => printReceipt(selectedOrder)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+                  title="Print Receipt"
+                >
+                  <Printer className="h-4 w-4" />
+                  <span>Print Receipt</span>
+                </button>
+                <button
+                  onClick={() => setSelectedOrder(null)}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors duration-200"
+                >
+                  <XCircle className="h-5 w-5 text-gray-500" />
+                </button>
+              </div>
             </div>
 
             <div className="p-6">
@@ -585,6 +905,9 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
                     <p><strong>Name:</strong> {selectedOrder.customer_name}</p>
                     <p><strong>Contact:</strong> {selectedOrder.contact_number}</p>
                     <p><strong>Service Type:</strong> {formatServiceType(selectedOrder.service_type)}</p>
+                    {selectedOrder.table_number && (
+                      <p><strong>Table Number:</strong> #{selectedOrder.table_number}</p>
+                    )}
                     <p><strong>Payment Method:</strong> {selectedOrder.payment_method}</p>
                     <p><strong>Order Date:</strong> {formatDateTime(selectedOrder.created_at)}</p>
                   </div>

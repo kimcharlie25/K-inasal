@@ -16,6 +16,7 @@ export interface CreateOrderPayload {
   total: number;
   items: CartItem[];
   receiptUrl?: string;
+  tableNumber?: number;
 }
 
 export interface OrderWithItems {
@@ -34,6 +35,7 @@ export interface OrderWithItems {
   status: string;
   created_at: string;
   receipt_url: string | null;
+  table_number: number | null;
   order_items: {
     id: string;
     item_id: string;
@@ -150,6 +152,7 @@ export const useOrders = () => {
           total: payload.total,
           ip_address: clientIp ?? null,
           receipt_url: payload.receiptUrl ?? null,
+          table_number: payload.tableNumber ?? null,
         })
         .select()
         .single();
@@ -203,21 +206,94 @@ export const useOrders = () => {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let pollInterval: NodeJS.Timeout | null = null;
+
+    // Initial fetch
     fetchOrders();
 
-    // Realtime subscriptions
-    const channel = supabase
-      .channel('orders-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+    // Setup realtime subscription
+    const setupRealtime = () => {
+      channel = supabase
+        .channel('orders-realtime-' + Date.now(), {
+          config: {
+            broadcast: { self: false },
+          },
+        })
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'orders',
+          },
+          (payload) => {
+            console.log('Order change detected:', payload.eventType, payload.new);
+            if (isMounted) {
+              fetchOrders();
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'order_items',
+          },
+          (payload) => {
+            console.log('Order item change detected:', payload.eventType);
+            if (isMounted) {
+              fetchOrders();
+            }
+          }
+        )
+        .subscribe((status) => {
+          console.log('Realtime subscription status:', status);
+          if (status === 'SUBSCRIBED') {
+            console.log('✅ Successfully subscribed to orders realtime updates');
+            // Clear polling if realtime works
+            if (pollInterval) {
+              clearInterval(pollInterval);
+              pollInterval = null;
+            }
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            console.warn('⚠️ Realtime subscription failed, falling back to polling:', status);
+            // Fallback to polling if realtime fails
+            if (!pollInterval) {
+              pollInterval = setInterval(() => {
+                if (isMounted) {
+                  console.log('Polling for new orders...');
+                  fetchOrders();
+                }
+              }, 5000); // Poll every 5 seconds
+            }
+          }
+        });
+    };
+
+    setupRealtime();
+
+    // Fallback polling mechanism (runs every 10 seconds as backup)
+    const backupPollInterval = setInterval(() => {
+      if (isMounted) {
         fetchOrders();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => {
-        fetchOrders();
-      })
-      .subscribe();
+      }
+    }, 10000);
 
     return () => {
-      supabase.removeChannel(channel);
+      isMounted = false;
+      if (channel) {
+        console.log('Cleaning up orders realtime subscription');
+        supabase.removeChannel(channel);
+      }
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+      if (backupPollInterval) {
+        clearInterval(backupPollInterval);
+      }
     };
   }, [fetchOrders]);
 

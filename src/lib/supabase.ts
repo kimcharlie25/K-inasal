@@ -224,6 +224,7 @@ export type Database = {
           status: string;
           ip_address: string | null;
           created_at: string;
+          table_number: number | null;
         };
         Insert: {
           id?: string;
@@ -241,6 +242,7 @@ export type Database = {
           status?: string;
           ip_address?: string | null;
           created_at?: string;
+          table_number?: number | null;
         };
         Update: {
           id?: string;
@@ -258,6 +260,7 @@ export type Database = {
           status?: string;
           ip_address?: string | null;
           created_at?: string;
+          table_number?: number | null;
         };
       };
       order_items: {
@@ -295,6 +298,26 @@ export type Database = {
           unit_price?: number;
           quantity?: number;
           subtotal?: number;
+          created_at?: string;
+        };
+      };
+      tables: {
+        Row: {
+          id: number;
+          name: string;
+          qr_url: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          name: string;
+          qr_url: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          name?: string;
+          qr_url?: string;
           created_at?: string;
         };
       };
