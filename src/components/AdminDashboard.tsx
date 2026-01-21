@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Edit, Trash2, Save, X, ArrowLeft, Coffee, TrendingUp, Package, Users, FolderOpen, Settings, ShoppingCart, LogOut, Boxes } from 'lucide-react';
+import { Plus, Edit, Trash2, Save, X, ArrowLeft, Coffee, TrendingUp, Package, Users, FolderOpen, Settings, ShoppingCart, LogOut, Boxes, Utensils } from 'lucide-react';
 import { MenuItem, Variation, AddOn } from '../types';
 import { addOnCategories } from '../data/menuData';
 import { useMenu } from '../hooks/useMenu';
@@ -12,12 +12,13 @@ import OrdersManager from './OrdersManager';
 import InventoryManager from './InventoryManager';
 import CustomersManager from './CustomersManager';
 import TablesManager from './TablesManager';
+import KitchenDisplay from './KitchenDisplay';
 
 const AdminDashboard: React.FC = () => {
   const { user, signOut } = useAuth();
   const { menuItems, loading, addMenuItem, updateMenuItem, deleteMenuItem } = useMenu();
   const { categories } = useCategories();
-  const [currentView, setCurrentView] = useState<'dashboard' | 'items' | 'add' | 'edit' | 'categories' | 'settings' | 'orders' | 'inventory' | 'customers' | 'tables'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'items' | 'add' | 'edit' | 'categories' | 'settings' | 'orders' | 'inventory' | 'customers' | 'tables' | 'kitchen'>('dashboard');
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -127,10 +128,10 @@ const AdminDashboard: React.FC = () => {
       const item = menuItems.find(i => i.id === id);
       return item ? item.name : 'Unknown Item';
     }).slice(0, 5); // Show first 5 items
-    
+
     const displayNames = itemNames.join(', ');
     const moreItems = selectedItems.length > 5 ? ` and ${selectedItems.length - 5} more items` : '';
-    
+
     if (confirm(`Are you sure you want to delete ${selectedItems.length} item(s)?\n\nItems to delete: ${displayNames}${moreItems}\n\nThis action cannot be undone.`)) {
       try {
         setIsProcessing(true);
@@ -177,8 +178,8 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleSelectItem = (itemId: string) => {
-    setSelectedItems(prev => 
-      prev.includes(itemId) 
+    setSelectedItems(prev =>
+      prev.includes(itemId)
         ? prev.filter(id => id !== itemId)
         : [...prev, itemId]
     );
@@ -641,7 +642,7 @@ const AdminDashboard: React.FC = () => {
                   <h3 className="text-lg font-medium text-black mb-1">Bulk Actions</h3>
                   <p className="text-sm text-gray-600">{selectedItems.length} item(s) selected</p>
                 </div>
-                
+
                 <div className="flex flex-col sm:flex-row gap-3">
                   {/* Change Category */}
                   <div className="flex items-center space-x-2">
@@ -662,7 +663,7 @@ const AdminDashboard: React.FC = () => {
                       ))}
                     </select>
                   </div>
-                  
+
                   {/* Remove Items */}
                   <button
                     onClick={handleBulkRemove}
@@ -672,7 +673,7 @@ const AdminDashboard: React.FC = () => {
                     <Trash2 className="h-4 w-4" />
                     <span>{isProcessing ? 'Removing...' : 'Remove Selected'}</span>
                   </button>
-                  
+
                   {/* Clear Selection */}
                   <button
                     onClick={() => {
@@ -786,11 +787,10 @@ const AdminDashboard: React.FC = () => {
                               Popular
                             </span>
                           )}
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            item.available 
-                              ? 'bg-green-100 text-green-800' 
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.available
+                              ? 'bg-green-100 text-green-800'
                               : 'bg-red-100 text-red-800'
-                          }`}>
+                            }`}>
                             {item.available ? 'Available' : 'Unavailable'}
                           </span>
                         </div>
@@ -850,14 +850,14 @@ const AdminDashboard: React.FC = () => {
                       </button>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-gray-900 truncate">{item.name}</h3>
                       <p className="text-sm text-gray-500 mt-1 line-clamp-2">{item.description}</p>
                     </div>
                   </div>
-                  
+
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-gray-500">Category:</span>
@@ -887,7 +887,7 @@ const AdminDashboard: React.FC = () => {
                       <span className="ml-1 text-gray-900">{item.addOns?.length || 0}</span>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center justify-between mt-3">
                     <div className="flex items-center space-x-2">
                       {item.popular && (
@@ -895,11 +895,10 @@ const AdminDashboard: React.FC = () => {
                           Popular
                         </span>
                       )}
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        item.available 
-                          ? 'bg-green-100 text-green-800' 
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.available
+                          ? 'bg-green-100 text-green-800'
                           : 'bg-red-100 text-red-800'
-                      }`}>
+                        }`}>
                         {item.available ? 'Available' : 'Unavailable'}
                       </span>
                     </div>
@@ -970,6 +969,11 @@ const AdminDashboard: React.FC = () => {
   // Tables View
   if (currentView === 'tables') {
     return <TablesManager onBack={() => setCurrentView('dashboard')} />;
+  }
+
+  // Kitchen View
+  if (currentView === 'kitchen') {
+    return <KitchenDisplay onBack={() => setCurrentView('dashboard')} />;
   }
 
   // Dashboard View
@@ -1109,6 +1113,13 @@ const AdminDashboard: React.FC = () => {
               >
                 <FolderOpen className="h-5 w-5 text-gray-400" />
                 <span className="font-medium text-gray-900">Table Management</span>
+              </button>
+              <button
+                onClick={() => setCurrentView('kitchen')}
+                className="w-full flex items-center space-x-3 p-3 text-left hover:bg-gray-50 rounded-lg transition-colors duration-200"
+              >
+                <Utensils className="h-5 w-5 text-gray-400" />
+                <span className="font-medium text-gray-900">Kitchen Display</span>
               </button>
               <button
                 onClick={() => setCurrentView('settings')}
