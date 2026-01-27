@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
 export interface Table {
-  id: number;
+  id: string;
   name: string;
   qr_url: string;
   created_at: string;
@@ -33,22 +33,18 @@ export const useTables = () => {
     }
   }, []);
 
-  const addTable = useCallback(async () => {
+  const addTable = useCallback(async (customName?: string) => {
     try {
-      // Get the next table number by finding the max ID
+      // Get the next table number by finding items
       const { data: existingTables } = await supabase
         .from('tables')
-        .select('id')
-        .order('id', { ascending: false })
-        .limit(1);
+        .select('name')
+        .order('created_at', { ascending: false });
 
-      const nextId = existingTables && existingTables.length > 0 
-        ? existingTables[0].id + 1 
-        : 1;
-
-      const tableName = `Table ${nextId}`;
+      const nextNum = existingTables ? existingTables.length + 1 : 1;
+      const tableName = customName || `Table ${nextNum}`;
       const baseUrl = window.location.origin;
-      const qrUrl = `${baseUrl}/?table=${nextId}`;
+      const qrUrl = `${baseUrl}/?table=${encodeURIComponent(tableName)}`;
 
       const { data, error: insertError } = await supabase
         .from('tables')
@@ -69,7 +65,7 @@ export const useTables = () => {
     }
   }, [fetchTables]);
 
-  const deleteTable = useCallback(async (id: number) => {
+  const deleteTable = useCallback(async (id: string) => {
     try {
       const { error: deleteError } = await supabase
         .from('tables')

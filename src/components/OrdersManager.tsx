@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle, Clock, XCircle, RefreshCw, ChevronDown, Search, Image as ImageIcon, Download, Calendar, DollarSign, Printer } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Clock, XCircle, RefreshCw, ChevronDown, Search, Image as ImageIcon, Download, Calendar, DollarSign, Printer, Utensils, Bell } from 'lucide-react';
 import { useOrders, OrderWithItems } from '../hooks/useOrders';
 
 interface OrdersManagerProps {
@@ -7,15 +7,29 @@ interface OrdersManagerProps {
 }
 
 const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
-  const { orders, loading, error, updateOrderStatus } = useOrders();
+  const playNotificationSound = () => {
+    const audio = new Audio('/notification.mp3');
+    audio.play().catch(e => console.warn('Audio play failed:', e));
+  };
+
+  const { orders, loading, error, updateOrderStatus } = useOrders({
+    onNewOrder: () => playNotificationSound()
+  });
   const [selectedOrder, setSelectedOrder] = useState<OrderWithItems | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled'>('all');
   const [sortKey, setSortKey] = useState<'created_at' | 'total' | 'customer_name' | 'status'>('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+
+  // Set default date range to today
+  const getTodayDateString = () => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  };
+
+  const [dateFrom, setDateFrom] = useState(getTodayDateString());
+  const [dateTo, setDateTo] = useState(getTodayDateString());
   const [exporting, setExporting] = useState(false);
 
   const getStatusColor = (status: string) => {
@@ -96,7 +110,7 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const base = statusFilter === 'all' ? orders : orders.filter(o => o.status.toLowerCase() === statusFilter);
-    
+
     // Apply date filters
     let dateFiltered = base;
     if (dateFrom) {
@@ -109,15 +123,15 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
       toDate.setHours(23, 59, 59, 999);
       dateFiltered = dateFiltered.filter(o => new Date(o.created_at) <= toDate);
     }
-    
+
     const searched = q.length === 0
       ? dateFiltered
       : dateFiltered.filter(o =>
-          o.customer_name.toLowerCase().includes(q) ||
-          o.contact_number.toLowerCase().includes(q) ||
-          o.id.toLowerCase().includes(q) ||
-          (o.address || '').toLowerCase().includes(q)
-        );
+        o.customer_name.toLowerCase().includes(q) ||
+        o.contact_number.toLowerCase().includes(q) ||
+        o.id.toLowerCase().includes(q) ||
+        (o.address || '').toLowerCase().includes(q)
+      );
     const sorted = [...searched].sort((a, b) => {
       const dir = sortDir === 'asc' ? 1 : -1;
       switch (sortKey) {
@@ -149,7 +163,7 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
     try {
       // Filter completed orders only
       const completedOrders = filtered.filter(o => o.status.toLowerCase() === 'completed');
-      
+
       if (completedOrders.length === 0) {
         alert('No completed orders to export.');
         setExporting(false);
@@ -192,16 +206,16 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
-      
+
       const dateStr = new Date().toISOString().split('T')[0];
       link.setAttribute('href', url);
       link.setAttribute('download', `completed_orders_${dateStr}.csv`);
       link.style.visibility = 'hidden';
-      
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
+
       alert(`Successfully exported ${completedOrders.length} completed order(s)!`);
     } catch (error) {
       console.error('Export error:', error);
@@ -370,7 +384,7 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
     ${tableNumber ? `
     <div class="row">
       <span class="row-label">Table:</span>
-      <span>#${tableNumber}</span>
+      <span>${tableNumber}</span>
     </div>
     ` : ''}
     ${order.address ? `
@@ -410,9 +424,9 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
           ${item.variation ? `<div class="item-details">Size: ${item.variation.name}</div>` : ''}
           ${item.add_ons && item.add_ons.length > 0 ? `
             <div class="item-details">
-              Add-ons: ${item.add_ons.map((addon: any) => 
-                addon.quantity > 1 ? `${addon.name} x${addon.quantity}` : addon.name
-              ).join(', ')}
+              Add-ons: ${item.add_ons.map((addon: any) =>
+      addon.quantity > 1 ? `${addon.name} x${addon.quantity}` : addon.name
+    ).join(', ')}
             </div>
           ` : ''}
           <div class="item-price">
@@ -479,9 +493,50 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
     return filtered.filter(order => order.status.toLowerCase() === 'completed').length;
   }, [filtered]);
 
+  // Aggregate items from completed orders for summary
+  const itemSummary = useMemo(() => {
+    const summary: Record<string, { name: string, quantity: number, total: number }> = {};
+
+    filtered
+      .filter(order => order.status.toLowerCase() === 'completed')
+      .forEach(order => {
+        order.order_items.forEach(item => {
+          const key = `${item.name}-${item.variation?.name || 'base'}`;
+          if (!summary[key]) {
+            summary[key] = {
+              name: item.variation ? `${item.name} (${item.variation.name})` : item.name,
+              quantity: 0,
+              total: 0
+            };
+          }
+          summary[key].quantity += item.quantity;
+          summary[key].total += item.subtotal;
+        });
+      });
+
+    return Object.values(summary).sort((a, b) => b.quantity - a.quantity);
+  }, [filtered]);
+
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+
+  // Calculate pending orders for today
+  const todayPendingCount = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    return orders.filter(order => {
+      const orderDate = new Date(order.created_at);
+      return order.status.toLowerCase() === 'pending' &&
+        orderDate >= today &&
+        orderDate < tomorrow;
+    }).length;
+  }, [orders]);
+
   // Show a subtle indicator when orders are being auto-refreshed
   const [isRefreshing, setIsRefreshing] = React.useState(false);
-  
+
   React.useEffect(() => {
     // Monitor when orders change to show refresh indicator
     setIsRefreshing(true);
@@ -532,6 +587,16 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
                 <span>Back to Dashboard</span>
               </button>
               <h1 className="text-2xl font-playfair font-semibold text-black">Orders Management</h1>
+              {todayPendingCount > 0 && (
+                <div className="relative inline-flex items-center">
+                  <div className="flex items-center space-x-2 bg-yellow-100 text-yellow-800 px-3 py-1.5 rounded-lg border border-yellow-300">
+                    <Bell className="h-4 w-4" />
+                    <span className="text-sm font-medium">
+                      {todayPendingCount} pending order{todayPendingCount !== 1 ? 's' : ''} today
+                    </span>
+                  </div>
+                </div>
+              )}
               {isRefreshing && (
                 <div className="flex items-center space-x-2 text-green-600 text-sm">
                   <RefreshCw className="h-4 w-4 animate-spin" />
@@ -584,17 +649,17 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => toggleSort('created_at')}
-                    className={`px-3 py-2 rounded-lg border text-sm flex items-center gap-1 ${sortKey==='created_at' ? 'border-blue-500 text-blue-700 bg-blue-50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    className={`px-3 py-2 rounded-lg border text-sm flex items-center gap-1 ${sortKey === 'created_at' ? 'border-blue-500 text-blue-700 bg-blue-50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
                   >
                     Date
-                    <ChevronDown className={`h-4 w-4 transition-transform ${sortKey==='created_at' && sortDir==='asc' ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`h-4 w-4 transition-transform ${sortKey === 'created_at' && sortDir === 'asc' ? 'rotate-180' : ''}`} />
                   </button>
                   <button
                     onClick={() => toggleSort('total')}
-                    className={`px-3 py-2 rounded-lg border text-sm flex items-center gap-1 ${sortKey==='total' ? 'border-blue-500 text-blue-700 bg-blue-50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                    className={`px-3 py-2 rounded-lg border text-sm flex items-center gap-1 ${sortKey === 'total' ? 'border-blue-500 text-blue-700 bg-blue-50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
                   >
                     Total
-                    <ChevronDown className={`h-4 w-4 transition-transform ${sortKey==='total' && sortDir==='asc' ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`h-4 w-4 transition-transform ${sortKey === 'total' && sortDir === 'asc' ? 'rotate-180' : ''}`} />
                   </button>
                 </div>
               </div>
@@ -633,21 +698,30 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
                   )}
                 </div>
               </div>
-              
-              <button
-                onClick={exportToCSV}
-                disabled={exporting || filtered.filter(o => o.status.toLowerCase() === 'completed').length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium"
-              >
-                <Download className="h-4 w-4" />
-                {exporting ? 'Exporting...' : 'Export Completed Orders'}
-              </button>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={() => setShowSummaryModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                >
+                  <Utensils className="h-4 w-4" />
+                  View Item Summary
+                </button>
+                <button
+                  onClick={exportToCSV}
+                  disabled={exporting || filtered.filter(o => o.status.toLowerCase() === 'completed').length === 0}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium"
+                >
+                  <Download className="h-4 w-4" />
+                  {exporting ? 'Exporting...' : 'Export Completed Orders'}
+                </button>
+              </div>
             </div>
 
             {/* Results count */}
             {(dateFrom || dateTo) && (
               <div className="text-sm text-gray-600">
-                Showing {filtered.length} order{filtered.length !== 1 ? 's' : ''} 
+                Showing {filtered.length} order{filtered.length !== 1 ? 's' : ''}
                 {dateFrom && ` from ${new Date(dateFrom).toLocaleDateString()}`}
                 {dateTo && ` to ${new Date(dateTo).toLocaleDateString()}`}
               </div>
@@ -744,7 +818,7 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
                         <td className="px-5 py-4">
                           {order.table_number ? (
                             <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-black text-white">
-                              #{order.table_number}
+                              {order.table_number}
                             </span>
                           ) : (
                             <span className="text-gray-400 text-xs">—</span>
@@ -907,7 +981,7 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
                     <p><strong>Order Date:</strong> {formatDateTime(selectedOrder.created_at)}</p>
                   </div>
                 </div>
-                
+
                 <div>
                   <h4 className="font-semibold text-gray-900 mb-3">Order Details</h4>
                   <div className="space-y-2 text-sm">
@@ -964,7 +1038,7 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
                           )}
                           {item.add_ons && item.add_ons.length > 0 && (
                             <div className="text-sm text-gray-600 mt-1">
-                              Add-ons: {item.add_ons.map((addon: any) => 
+                              Add-ons: {item.add_ons.map((addon: any) =>
                                 addon.quantity > 1 ? `${addon.name} x${addon.quantity}` : addon.name
                               ).join(', ')}
                             </div>
@@ -979,6 +1053,83 @@ const OrdersManager: React.FC<OrdersManagerProps> = ({ onBack }) => {
                   ))}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Item Summary Modal */}
+      {showSummaryModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
+                  <Utensils className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 border-none">Item Sales Summary</h3>
+                  <p className="text-sm text-gray-500">
+                    {dateFrom || dateTo
+                      ? `From ${dateFrom || 'start'} to ${dateTo || 'now'}`
+                      : 'All completed orders'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSummaryModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <XCircle className="h-6 w-6 text-gray-400" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto">
+              {itemSummary.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-gray-500">No completed items found for the selected period.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-12 text-xs font-bold text-gray-400 uppercase tracking-wider pb-2 border-b">
+                    <div className="col-span-7">Item Name</div>
+                    <div className="col-span-2 text-center">Qty</div>
+                    <div className="col-span-3 text-right">Total Revenue</div>
+                  </div>
+
+                  {itemSummary.map((item, idx) => (
+                    <div key={idx} className="grid grid-cols-12 items-center py-3 border-b border-gray-50 last:border-0">
+                      <div className="col-span-7 font-medium text-gray-900">{item.name}</div>
+                      <div className="col-span-2 text-center">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          x{item.quantity}
+                        </span>
+                      </div>
+                      <div className="col-span-3 text-right font-semibold text-gray-900">
+                        ₱{item.total.toFixed(2)}
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="mt-6 pt-6 border-t-2 border-gray-100">
+                    <div className="flex justify-between items-center px-2">
+                      <span className="text-gray-500 font-medium">Grand Total Revenue</span>
+                      <span className="text-2xl font-black text-green-600">
+                        ₱{itemSummary.reduce((sum, item) => sum + item.total, 0).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 bg-gray-50 rounded-b-2xl flex justify-end">
+              <button
+                onClick={() => setShowSummaryModal(false)}
+                className="px-6 py-2.5 bg-gray-900 text-white rounded-xl font-bold hover:bg-gray-800 transition-all active:scale-95"
+              >
+                Close Summary
+              </button>
             </div>
           </div>
         </div>

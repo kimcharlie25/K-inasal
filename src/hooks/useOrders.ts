@@ -16,7 +16,7 @@ export interface CreateOrderPayload {
   total: number;
   items: CartItem[];
   receiptUrl?: string;
-  tableNumber?: number;
+  tableNumber?: string;
 }
 
 export interface OrderWithItems {
@@ -35,7 +35,7 @@ export interface OrderWithItems {
   status: string;
   created_at: string;
   receipt_url: string | null;
-  table_number: number | null;
+  table_number: string | null;
   order_items: {
     id: string;
     item_id: string;
@@ -50,7 +50,11 @@ export interface OrderWithItems {
 
 type OrderItemsTable = Database['public']['Tables']['order_items'];
 
-export const useOrders = () => {
+export interface UseOrdersOptions {
+  onNewOrder?: (order: OrderWithItems) => void;
+}
+
+export const useOrders = (options?: UseOrdersOptions) => {
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -231,6 +235,9 @@ export const useOrders = () => {
           (payload) => {
             console.log('Order change detected:', payload.eventType, payload.new);
             if (isMounted) {
+              if (payload.eventType === 'INSERT' && options?.onNewOrder) {
+                options.onNewOrder(payload.new as OrderWithItems);
+              }
               fetchOrders();
             }
           }
@@ -317,13 +324,13 @@ export const useOrders = () => {
     return () => { cancelled = true; };
   }, [clientIp]);
 
-  return { 
-    createOrder, 
-    creating, 
-    error, 
-    orders, 
-    loading, 
-    fetchOrders, 
-    updateOrderStatus 
+  return {
+    createOrder,
+    creating,
+    error,
+    orders,
+    loading,
+    fetchOrders,
+    updateOrderStatus
   };
 };

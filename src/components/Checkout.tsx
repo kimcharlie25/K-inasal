@@ -14,7 +14,6 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
   const { createOrder, creating, error } = useOrders();
   const { tableNumber } = useTable();
   const [customerName, setCustomerName] = useState('');
-  const [contactNumber, setContactNumber] = useState('');
   const [notes, setNotes] = useState('');
   const [uiNotice, setUiNotice] = useState<string | null>(null);
   // Order confirmation modal state
@@ -26,7 +25,7 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
     try {
       const order = await createOrder({
         customerName,
-        contactNumber,
+        contactNumber: '', // Empty contact number
         serviceType: 'dine-in', // Set to dine-in as requested
         paymentMethod: 'cash', // Default payment method
         notes: notes || undefined,
@@ -34,7 +33,7 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
         items: cartItems,
         tableNumber: tableNumber ?? undefined,
       });
-      
+
       // Show confirmation modal
       setShowConfirmationModal(true);
     } catch (e) {
@@ -59,7 +58,7 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
     window.location.href = '/';
   };
 
-  const isDetailsValid = customerName && contactNumber;
+  const isDetailsValid = customerName;
 
   return (
     <>
@@ -85,7 +84,7 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
           {/* Customer Details Form */}
           <div className="bg-white rounded-xl shadow-sm p-6">
             <h2 className="text-2xl font-sans font-bold text-[#FF0000] mb-6">Customer Information</h2>
-            
+
             <form className="space-y-6">
               {/* Customer Information */}
               <div>
@@ -96,18 +95,6 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
                   onChange={(e) => setCustomerName(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent transition-all duration-200 font-sans"
                   placeholder="Enter your full name"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-black mb-2 font-sans">Contact Number *</label>
-                <input
-                  type="tel"
-                  value={contactNumber}
-                  onChange={(e) => setContactNumber(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent transition-all duration-200 font-sans"
-                  placeholder="09XX XXX XXXX"
                   required
                 />
               </div>
@@ -130,7 +117,7 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
           {/* Order Summary */}
           <div className="bg-white rounded-xl shadow-sm p-6">
             <h2 className="text-2xl font-sans font-bold text-[#FF0000] mb-6">Order Summary</h2>
-            
+
             <div className="space-y-4 mb-6">
               {cartItems.map((item) => (
                 <div key={item.id} className="flex items-center justify-between py-2 border-b border-gray-200">
@@ -141,8 +128,8 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
                     )}
                     {item.selectedAddOns && item.selectedAddOns.length > 0 && (
                       <p className="text-sm text-gray-600 font-sans">
-                        Add-ons: {item.selectedAddOns.map(addOn => 
-                          addOn.quantity && addOn.quantity > 1 
+                        Add-ons: {item.selectedAddOns.map(addOn =>
+                          addOn.quantity && addOn.quantity > 1
                             ? `${addOn.name} x${addOn.quantity}`
                             : addOn.name
                         ).join(', ')}
@@ -154,7 +141,7 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
                 </div>
               ))}
             </div>
-            
+
             <div className="border-t border-gray-200 pt-4 mb-6">
               <div className="flex items-center justify-between text-2xl font-sans font-bold text-[#FF0000]">
                 <span>Total:</span>
@@ -165,11 +152,10 @@ const Checkout: React.FC<CheckoutProps> = ({ cartItems, totalPrice, onBack }) =>
             <button
               onClick={handleConfirmOrder}
               disabled={!isDetailsValid || creating}
-              className={`w-full py-4 rounded-lg font-sans font-medium text-lg transition-all duration-200 transform ${
-                !isDetailsValid || creating
+              className={`w-full py-4 rounded-lg font-sans font-medium text-lg transition-all duration-200 transform ${!isDetailsValid || creating
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : 'bg-black text-white hover:bg-gray-800 hover:scale-[1.02]'
-              }`}
+                }`}
             >
               {creating ? (
                 <span className="flex items-center justify-center space-x-2">

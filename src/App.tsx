@@ -15,7 +15,7 @@ import { TableProvider, useTable } from './contexts/TableContext';
 function MainAppContent() {
   const cart = useCart();
   const { menuItems } = useMenu();
-  const { tableNumber, setTableNumber } = useTable();
+  const { setTableNumber } = useTable();
   const [searchParams] = useSearchParams();
   const [currentView, setCurrentView] = React.useState<'menu' | 'cart' | 'checkout'>('menu');
   const [selectedCategory, setSelectedCategory] = React.useState<string>('all');
@@ -24,10 +24,7 @@ function MainAppContent() {
   React.useEffect(() => {
     const tableParam = searchParams.get('table');
     if (tableParam) {
-      const tableNum = parseInt(tableParam, 10);
-      if (!isNaN(tableNum)) {
-        setTableNumber(tableNum);
-      }
+      setTableNumber(tableParam);
     }
   }, [searchParams, setTableNumber]);
 
@@ -40,31 +37,31 @@ function MainAppContent() {
   };
 
   // Filter menu items based on selected category
-  const filteredMenuItems = selectedCategory === 'all' 
-    ? menuItems 
+  const filteredMenuItems = selectedCategory === 'all'
+    ? menuItems
     : menuItems.filter(item => item.category === selectedCategory);
 
   return (
     <div className="min-h-screen bg-white font-sans">
-      <Header 
+      <Header
         cartItemsCount={cart.getTotalItems()}
         onCartClick={() => handleViewChange('cart')}
         onMenuClick={() => handleViewChange('menu')}
         onCategoryClick={handleCategoryClick}
         selectedCategory={selectedCategory}
       />
-      
+
       {currentView === 'menu' && (
-        <Menu 
+        <Menu
           menuItems={filteredMenuItems}
           addToCart={cart.addToCart}
           cartItems={cart.cartItems}
           updateQuantity={cart.updateQuantity}
         />
       )}
-      
+
       {currentView === 'cart' && (
-        <Cart 
+        <Cart
           cartItems={cart.cartItems}
           updateQuantity={cart.updateQuantity}
           removeFromCart={cart.removeFromCart}
@@ -74,9 +71,9 @@ function MainAppContent() {
           onCheckout={() => handleViewChange('checkout')}
         />
       )}
-      
+
       {currentView === 'checkout' && (
-        <Checkout 
+        <Checkout
           cartItems={cart.cartItems}
           totalPrice={cart.getTotalPrice()}
           onBack={() => handleViewChange('cart')}
@@ -101,13 +98,13 @@ function App() {
         <Routes>
           <Route path="/" element={<MainApp />} />
           <Route path="/admin/login" element={<AdminLogin />} />
-          <Route 
-            path="/admin" 
+          <Route
+            path="/admin"
             element={
               <ProtectedRoute>
                 <AdminDashboard />
               </ProtectedRoute>
-            } 
+            }
           />
         </Routes>
       </Router>

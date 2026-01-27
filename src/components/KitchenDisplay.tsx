@@ -1,13 +1,20 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { ArrowLeft, Clock, CheckCircle, Flame, Timer, Utensils } from 'lucide-react';
-import { useOrders, OrderWithItems } from '../hooks/useOrders';
+import { ArrowLeft, Clock, CheckCircle, Flame, Utensils } from 'lucide-react';
+import { useOrders } from '../hooks/useOrders';
 
 interface KitchenDisplayProps {
   onBack: () => void;
 }
 
 const KitchenDisplay: React.FC<KitchenDisplayProps> = ({ onBack }) => {
-  const { orders, loading, error, updateOrderStatus } = useOrders();
+  const playNotificationSound = () => {
+    const audio = new Audio('/notification.mp3');
+    audio.play().catch(e => console.warn('Audio play failed:', e));
+  };
+
+  const { orders, loading, updateOrderStatus } = useOrders({
+    onNewOrder: () => playNotificationSound()
+  });
   const [now, setNow] = useState(new Date());
 
   // Update clock every minute for elapsed time
@@ -17,7 +24,7 @@ const KitchenDisplay: React.FC<KitchenDisplayProps> = ({ onBack }) => {
   }, []);
 
   const kitchenOrders = useMemo(() => {
-    return orders.filter(order => 
+    return orders.filter(order =>
       ['confirmed', 'preparing'].includes(order.status.toLowerCase())
     ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   }, [orders]);
@@ -25,7 +32,7 @@ const KitchenDisplay: React.FC<KitchenDisplayProps> = ({ onBack }) => {
   const getTimeElapsed = (createdAt: string) => {
     const start = new Date(createdAt);
     const diff = Math.floor((now.getTime() - start.getTime()) / 60000); // Diff in minutes
-    
+
     if (diff < 1) return 'Just now';
     if (diff < 60) return `${diff}m ago`;
     const hours = Math.floor(diff / 60);
@@ -97,16 +104,14 @@ const KitchenDisplay: React.FC<KitchenDisplayProps> = ({ onBack }) => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {kitchenOrders.map((order) => (
-              <div 
-                key={order.id} 
-                className={`flex flex-col bg-white rounded-2xl shadow-lg overflow-hidden border-2 h-full transition-all duration-300 ${
-                  order.status === 'preparing' ? 'border-orange-500' : 'border-gray-100'
-                }`}
+              <div
+                key={order.id}
+                className={`flex flex-col bg-white rounded-2xl shadow-lg overflow-hidden border-2 h-full transition-all duration-300 ${order.status === 'preparing' ? 'border-orange-500' : 'border-gray-100'
+                  }`}
               >
                 {/* Card Header */}
-                <div className={`p-4 border-b ${
-                  order.status === 'preparing' ? 'bg-orange-50' : 'bg-gray-50'
-                }`}>
+                <div className={`p-4 border-b ${order.status === 'preparing' ? 'bg-orange-50' : 'bg-gray-50'
+                  }`}>
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Order</span>
@@ -117,7 +122,7 @@ const KitchenDisplay: React.FC<KitchenDisplayProps> = ({ onBack }) => {
                       {getTimeElapsed(order.created_at)}
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center justify-between">
                     <div className="flex flex-col">
                       <span className="text-xs text-gray-500">Customer</span>
@@ -181,11 +186,10 @@ const KitchenDisplay: React.FC<KitchenDisplayProps> = ({ onBack }) => {
                 <div className="p-4 bg-gray-50 border-t">
                   <button
                     onClick={() => handleStatusUpdate(order.id, order.status)}
-                    className={`w-full py-4 rounded-xl flex items-center justify-center font-black uppercase tracking-widest transition-all duration-200 ${
-                      order.status === 'confirmed'
-                        ? 'bg-orange-600 text-white shadow-lg shadow-orange-200 hover:bg-orange-700 active:scale-95'
-                        : 'bg-green-600 text-white shadow-lg shadow-green-200 hover:bg-green-700 active:scale-95'
-                    }`}
+                    className={`w-full py-4 rounded-xl flex items-center justify-center font-black uppercase tracking-widest transition-all duration-200 ${order.status === 'confirmed'
+                      ? 'bg-orange-600 text-white shadow-lg shadow-orange-200 hover:bg-orange-700 active:scale-95'
+                      : 'bg-green-600 text-white shadow-lg shadow-green-200 hover:bg-green-700 active:scale-95'
+                      }`}
                   >
                     {order.status === 'confirmed' ? (
                       <>

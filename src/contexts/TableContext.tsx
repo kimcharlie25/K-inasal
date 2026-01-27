@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
 interface TableContextType {
-  tableNumber: number | null;
-  setTableNumber: (table: number | null) => void;
+  tableNumber: string | null;
+  setTableNumber: (table: string | null) => void;
   clearTableNumber: () => void;
 }
 
@@ -21,16 +21,13 @@ interface TableProviderProps {
 }
 
 export const TableProvider: React.FC<TableProviderProps> = ({ children }) => {
-  const [tableNumber, setTableNumberState] = useState<number | null>(null);
+  const [tableNumber, setTableNumberState] = useState<string | null>(null);
 
   // Load table number from localStorage on mount
   useEffect(() => {
     const stored = localStorage.getItem('tableNumber');
     if (stored) {
-      const parsed = parseInt(stored, 10);
-      if (!isNaN(parsed)) {
-        setTableNumberState(parsed);
-      }
+      setTableNumberState(stored);
     }
   }, []);
 
@@ -43,7 +40,7 @@ export const TableProvider: React.FC<TableProviderProps> = ({ children }) => {
     }
   }, [tableNumber]);
 
-  const setTableNumber = (table: number | null) => {
+  const setTableNumber = (table: string | null) => {
     setTableNumberState(table);
   };
 

@@ -10,12 +10,15 @@ interface TablesManagerProps {
 const TablesManager: React.FC<TablesManagerProps> = ({ onBack }) => {
   const { tables, loading, addTable, deleteTable } = useTables();
   const [isAdding, setIsAdding] = useState(false);
-  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const handleAddTable = async () => {
+    const name = prompt('Enter a name for the new table (e.g., VIP, Delivery, Table 1):');
+    if (name === null) return; // Cancelled
+
     try {
       setIsAdding(true);
-      await addTable();
+      await addTable(name || undefined);
     } catch (error) {
       alert('Failed to add table. Please try again.');
       console.error(error);
@@ -24,7 +27,7 @@ const TablesManager: React.FC<TablesManagerProps> = ({ onBack }) => {
     }
   };
 
-  const handleDeleteTable = async (id: number) => {
+  const handleDeleteTable = async (id: string) => {
     if (!confirm(`Are you sure you want to delete ${tables.find(t => t.id === id)?.name}? This action cannot be undone.`)) {
       return;
     }
@@ -37,7 +40,7 @@ const TablesManager: React.FC<TablesManagerProps> = ({ onBack }) => {
     }
   };
 
-  const handleCopyLink = async (qrUrl: string, id: number) => {
+  const handleCopyLink = async (qrUrl: string, id: string) => {
     try {
       await navigator.clipboard.writeText(qrUrl);
       setCopiedId(id);
@@ -47,7 +50,7 @@ const TablesManager: React.FC<TablesManagerProps> = ({ onBack }) => {
     }
   };
 
-  const downloadQRCode = (tableName: string, qrUrl: string, tableId: number) => {
+  const downloadQRCode = (tableName: string, tableId: string) => {
     // Find the QR code SVG element
     const qrContainer = document.getElementById(`qr-${tableId}`);
     if (!qrContainer) {
@@ -64,7 +67,7 @@ const TablesManager: React.FC<TablesManagerProps> = ({ onBack }) => {
     // Serialize SVG to string
     const serializer = new XMLSerializer();
     const svgString = serializer.serializeToString(svgElement);
-    
+
     // Create blob from SVG
     const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(svgBlob);
@@ -76,7 +79,7 @@ const TablesManager: React.FC<TablesManagerProps> = ({ onBack }) => {
       canvas.width = 256;
       canvas.height = 256;
       const ctx = canvas.getContext('2d');
-      
+
       if (!ctx) {
         URL.revokeObjectURL(url);
         return;
@@ -85,10 +88,10 @@ const TablesManager: React.FC<TablesManagerProps> = ({ onBack }) => {
       // Fill white background
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, 256, 256);
-      
+
       // Draw the QR code image
       ctx.drawImage(img, 0, 0, 256, 256);
-      
+
       // Convert to blob and download
       canvas.toBlob((blob) => {
         if (blob) {
@@ -104,12 +107,12 @@ const TablesManager: React.FC<TablesManagerProps> = ({ onBack }) => {
         URL.revokeObjectURL(url);
       }, 'image/png');
     };
-    
+
     img.onerror = () => {
       URL.revokeObjectURL(url);
       alert('Failed to generate QR code image. Please try again.');
     };
-    
+
     img.src = url;
   };
 
@@ -187,7 +190,7 @@ const TablesManager: React.FC<TablesManagerProps> = ({ onBack }) => {
 
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => downloadQRCode(table.name, table.qr_url, table.id)}
+                    onClick={() => downloadQRCode(table.name, table.id)}
                     className="flex-1 flex items-center justify-center space-x-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors duration-200 text-sm font-medium"
                   >
                     <Download className="h-4 w-4" />

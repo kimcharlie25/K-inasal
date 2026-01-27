@@ -224,7 +224,7 @@ export type Database = {
           status: string;
           ip_address: string | null;
           created_at: string;
-          table_number: number | null;
+          table_number: string | null;
         };
         Insert: {
           id?: string;
@@ -242,7 +242,7 @@ export type Database = {
           status?: string;
           ip_address?: string | null;
           created_at?: string;
-          table_number?: number | null;
+          table_number?: string | null;
         };
         Update: {
           id?: string;
@@ -260,7 +260,7 @@ export type Database = {
           status?: string;
           ip_address?: string | null;
           created_at?: string;
-          table_number?: number | null;
+          table_number?: string | null;
         };
       };
       order_items: {
@@ -303,19 +303,19 @@ export type Database = {
       };
       tables: {
         Row: {
-          id: number;
+          id: string;
           name: string;
           qr_url: string;
           created_at: string;
         };
         Insert: {
-          id?: number;
+          id?: string;
           name: string;
           qr_url: string;
           created_at?: string;
         };
         Update: {
-          id?: number;
+          id?: string;
           name?: string;
           qr_url?: string;
           created_at?: string;
